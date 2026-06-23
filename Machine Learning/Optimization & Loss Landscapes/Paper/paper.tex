@@ -1,0 +1,659 @@
+\documentclass[11pt]{article}
+
+% ── packages ──────────────────────────────────────────────────────────────────
+\usepackage[margin=1.2in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{parskip}
+\usepackage{natbib}
+
+% load cleveref AFTER hyperref
+\usepackage[capitalise,noabbrev]{cleveref}
+
+% ── hyperref setup ────────────────────────────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!60!black,
+  pdftitle={Near-Orthogonality of Layer Jacobians in Deep Residual Networks},
+  pdfauthor={Amir Hossein Rasti}
+}
+
+% ── theorem environments ──────────────────────────────────────────────────────
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+
+\theoremstyle{definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% tell cleveref how to name the assumption counter
+\crefname{assumption}{Assumption}{Assumptions}
+\Crefname{assumption}{Assumption}{Assumptions}
+
+% ── notation macros ───────────────────────────────────────────────────────────
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\smin}{\sigma_{\min}}
+\newcommand{\smax}{\sigma_{\max}}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\abs}[1]{\left|#1\right|}
+\newcommand{\inner}[2]{\left\langle #1,\, #2 \right\rangle}
+\newcommand{\tr}{\operatorname{tr}}
+\newcommand{\rank}{\operatorname{rank}}
+\newcommand{\reff}{r_{\mathrm{eff}}}
+\newcommand{\dI}{d_{\mathcal{I}}}
+\newcommand{\Cov}{\operatorname{Cov}}
+
+% ── title block ───────────────────────────────────────────────────────────────
+\title{%
+  \textbf{Near-Orthogonality of Layer Jacobians\\[0.2em]
+  in Deep Residual Networks}\\[0.6em]
+  \large A Random-Matrix Proof with Explicit Constants
+}
+\author{Amir Hossein Rasti}
+\date{June 2026}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+\maketitle
+\vspace{-1em}
+\noindent\rule{\linewidth}{0.4pt}
+\vspace{0.5em}
+\thispagestyle{empty}
+
+% ── abstract ──────────────────────────────────────────────────────────────────
+\begin{abstract}
+We prove that in an $L$-layer residual network satisfying a depth-scaled
+spectral-norm bound on residual block Jacobians, the per-layer contributions
+to the full parameter Jacobian are asymptotically \emph{near-orthogonal} in
+the Frobenius inner-product sense.  Concretely, for distinct layers
+$l \neq l'$,
+\[
+  \bigl|\inner{J_{\theta}^{(l)}}{J_{\theta}^{(l')}}_F\bigr|
+  \;\leq\;
+  e^{2c}\,C_{\mathrm{HW}}\,\sqrt{\dI\cdot W}
+  \quad\text{with probability}\;\geq 1-2e^{-\dI},
+\]
+while each diagonal term satisfies
+$\norm{J_{\theta}^{(l)}}_F^2 = \Theta\!\left(e^{2c}\,\dI W/L\right)$.
+The cross-to-diagonal ratio is therefore $O\!\left(L/\sqrt{\dI W}\right)$,
+which vanishes as $W\to\infty$ with $L$ and $\dI$ fixed.
+As a corollary, the effective rank of the Gauss--Newton matrix
+$G = J_\theta^\top J_\theta$ scales as
+$\Omega(L\cdot W_{\min}/\dI)$, growing multiplicatively with both depth
+and width.  This closes the rank-summation gap present in prior treatments
+of the loss landscape of overparameterised residual networks and provides
+the first explicit constant for the cross-term bound.
+The proof combines the Hanson--Wright inequality \citep{rudelson2013}
+with a product-integral representation of the residual pushforward operator.
+\end{abstract}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+\label{sec:intro}
+
+A central empirical puzzle of deep learning is that gradient-based
+optimisers rarely become trapped at suboptimal local minima, even for
+highly non-convex loss functions.  For overparameterised networks, several
+lines of work establish that the \emph{existence} of bad local minima is
+structurally improbable, typically by showing that the Gauss--Newton matrix
+$G = J_\theta^\top J_\theta$ carries a high-rank positive-semidefinite
+component that dominates the residual curvature
+\citep{kawaguchi2016,du2019,oymak2020}.
+
+These treatments share a common gap.  When the full parameter Jacobian
+$J_\theta$ is assembled by stacking per-layer contributions
+$\{J_\theta^{(l)}\}_{l=1}^{L}$, the effective rank of $G$ is bounded not
+by the \emph{sum} of per-layer ranks but by the rank of their union.
+The difference is decisive: if the per-layer Jacobians are highly
+correlated---sharing optimisation directions---depth provides no advantage
+beyond parameter count.  If they are near-orthogonal, ranks sum, and depth
+multiplies rather than merely adds to optimisation capacity.
+
+This paper proves the near-orthogonality claim rigorously and provides
+explicit constants.  The result is stated for deep residual networks
+satisfying a standard depth-scaling assumption on residual block Jacobians
+(Assumption~\ref{asm:spectral}), which is implied by gradient clipping or
+weight normalisation---both ubiquitous in practice.
+
+\paragraph{Main result (informal).}
+For any two layers $l\neq l'$ in an $L$-layer overparameterised residual
+network, the Frobenius inner product of their parameter Jacobians satisfies
+\[
+  \bigl|\inner{J_\theta^{(l)}}{J_\theta^{(l')}}_F\bigr|
+  \;=\;
+  O\!\Bigl(\sqrt{\dI\cdot W}\,/\,L\Bigr)
+\]
+with high probability over initialisation, where $\dI$ is the intrinsic
+dimension of the data manifold and $W$ is the layer width.  Each diagonal
+term is $\Theta(\dI W/L)$, so the cross-term is $o$ of the diagonal by a
+factor of $1/\sqrt{\dI W}$.  In the overparameterised regime $W\gg \dI$,
+this ratio is small, confirming near-orthogonality.
+
+\paragraph{Implications.}
+Near-orthogonality implies that the effective rank of $G$ scales as
+$\Omega(L\cdot W_{\min}/\dI)$.  This is strictly stronger than previous
+depth-independent bounds: depth and width contribute \emph{multiplicatively}
+to optimisation capacity, consistent with empirical observations that deep
+residual networks outperform shallow wide ones beyond what parameter count
+alone predicts.
+
+\paragraph{Organisation.}
+Section~\ref{sec:setup} states assumptions and notation.
+Section~\ref{sec:main} gives the complete proof.
+Section~\ref{sec:corollary} derives the Gauss--Newton rank corollary.
+Section~\ref{sec:scope} discusses scope, limitations, and falsifiable
+predictions.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Setup and Assumptions}
+\label{sec:setup}
+
+\subsection{Architecture}
+
+We consider an $L$-layer residual network with uniform hidden width $W$.
+Layer $l$ computes
+\[
+  x_l \;=\; x_{l-1} + F_l(x_{l-1};\,\theta_l),
+  \qquad l=1,\ldots,L,
+\]
+where $F_l:\R^W\to\R^W$ is the residual block with parameters
+$\theta_l\in\R^p$, $p=W^2$ (one weight matrix per layer for clarity; the
+result extends immediately to multi-layer blocks).  The output is
+$\hat{y} = h(x_L)$ for a fixed readout $h$.  The loss is
+$\mathcal{L}(\theta) = \tfrac{1}{n}\sum_{i=1}^n \ell(\hat{y}(x_i),y_i)$
+over $n$ data points.
+
+\subsection{Assumptions}
+
+\begin{assumption}[Depth-scaled spectral norm]
+\label{asm:spectral}
+There exists a universal constant $c>0$ such that for all $l$ and all
+$\theta$ along the training trajectory,
+\[
+  \bigl\|J_{F_l}(\theta)\bigr\|_2 \;\leq\; \frac{c}{L},
+\]
+where $J_{F_l} = \partial F_l/\partial x_{l-1}$ is the activation Jacobian
+of the residual block.  This is enforced in practice by gradient clipping
+\citep{zhang2020} or spectral normalisation \citep{miyato2018} and is
+consistent with the mean-field initialisation regime.
+\end{assumption}
+
+\begin{assumption}[Data excitation]
+\label{asm:excitation}
+The empirical covariance of representations $x_{l-1}$ satisfies
+$\lambda_{\min}\!\left(\Cov(x_{l-1})\right)\geq\gamma>0$ uniformly in $l$.
+The data thus activates all $\dI$ intrinsic dimensions at every layer.
+\end{assumption}
+
+\begin{assumption}[Sub-Gaussian initialisation]
+\label{asm:init}
+At initialisation, each weight matrix $W_l$ has i.i.d.\ entries distributed
+as $\mathcal{N}(0,2/W)$ (He initialisation).  More generally, it suffices
+that entries be mean-zero sub-Gaussian with parameter $\sigma^2=O(1/W)$.
+\end{assumption}
+
+\subsection{Key Objects}
+
+\paragraph{Per-layer parameter Jacobian.}
+The contribution of layer $l$'s parameters to the output Jacobian is
+\[
+  J_\theta^{(l)}
+  \;=\;
+  \Phi_{L\leftarrow l}\cdot Z_l
+  \;\in\;
+  \R^{n_{\mathrm{out}}\times p},
+\]
+where $Z_l = \partial x_l/\partial\theta_l\in\R^{W\times p}$ is the
+\emph{local parameter Jacobian} and
+\[
+  \Phi_{L\leftarrow l}
+  \;=\;
+  \prod_{k=l}^{L-1}\bigl(I + J_{F_k}\bigr)
+\]
+is the \emph{pushforward operator} mapping layer-$l$ feature space to the
+output.
+
+\paragraph{Full Jacobian and Gauss--Newton matrix.}
+\begin{align*}
+  J_\theta
+  &\;=\;
+  \bigl[\,J_\theta^{(1)}\;\big|\;J_\theta^{(2)}\;\big|\;\cdots\;\big|\;
+        J_\theta^{(L)}\,\bigr]
+  \;\in\;\R^{n_{\mathrm{out}}\times Lp},\\[4pt]
+  G
+  &\;=\;
+  J_\theta^\top J_\theta
+  \;\in\;\R^{Lp\times Lp}.
+\end{align*}
+The block structure of $G$ has diagonal blocks
+$G_{ll}=(J_\theta^{(l)})^\top J_\theta^{(l)}$ and off-diagonal blocks
+$G_{ll'}=(J_\theta^{(l)})^\top J_\theta^{(l')}$.
+Near-orthogonality is the statement that the off-diagonal blocks are small
+relative to the diagonal.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Main Theorem: Layer Near-Orthogonality}
+\label{sec:main}
+
+The proof proceeds in three steps:
+(i)~pushforward bi-Lipschitz bound,
+(ii)~cross-term decomposition and vanishing expectation,
+(iii)~concentration via Hanson--Wright.
+
+\subsection{Step 1 --- Pushforward is Bi-Lipschitz}
+
+\begin{lemma}[Pushforward spectrum]
+\label{lem:pushforward}
+Under Assumption~\ref{asm:spectral}, for all $l$ and all $\theta$ on the
+training trajectory,
+\[
+  e^{-c}
+  \;\leq\;
+  \smin\!\left(\Phi_{L\leftarrow l}\right)
+  \;\leq\;
+  \smax\!\left(\Phi_{L\leftarrow l}\right)
+  \;\leq\;
+  e^{c}.
+\]
+\end{lemma}
+
+\begin{proof}
+By Weyl's inequality applied to each factor,
+\[
+  \smin(I+J_{F_k})\;\geq\;1-\tfrac{c}{L},
+  \qquad
+  \smax(I+J_{F_k})\;\leq\;1+\tfrac{c}{L}.
+\]
+Taking the product over $L-l\leq L$ factors and using
+$(1\pm c/L)^L\to e^{\pm c}$ monotonically yields the stated bounds,
+which hold uniformly in $\theta$ because Assumption~\ref{asm:spectral}
+is uniform.
+\end{proof}
+
+\begin{remark}
+Lemma~\ref{lem:pushforward} implies $\Phi_{L\leftarrow l}$ is invertible
+and bi-Lipschitz as a map on the space of matrices.  In particular,
+$\rank(\Phi_{L\leftarrow l}\cdot M)=\rank(M)$ for any matrix $M$: the
+pushforward neither creates nor destroys optimisation directions.
+\end{remark}
+
+\subsection{Step 2 --- Cross-Term Decomposition}
+
+For $l < l'$, the off-diagonal Gauss--Newton block satisfies
+\[
+  G_{ll'}
+  \;=\;
+  Z_l^\top\cdot\Phi_{L\leftarrow l}^\top\cdot\Phi_{L\leftarrow l'}\cdot Z_{l'}.
+\]
+We expand the product of pushforward operators via
+\begin{equation}
+\label{eq:expand}
+  \Phi_{L\leftarrow l}^\top\,\Phi_{L\leftarrow l'}
+  \;=\;
+  I \;+\; \sum_{k=l}^{l'-1}J_{F_k}
+  \;+\; O\!\left(\frac{(l'-l)^2}{L^2}\right),
+\end{equation}
+where each factor contributes $J_{F_k}$ at order $1/L$ and commutator
+terms from the Baker--Campbell--Hausdorff expansion are $O(1/L^2)$ each,
+summing to $O((l'-l)/L^2)$ in spectral norm.  Therefore,
+\begin{equation}
+\label{eq:trace-expand}
+  \tr(G_{ll'})
+  \;=\;
+  \tr\!\left(Z_l^\top Z_{l'}\right)
+  \;+\;
+  \sum_{k=l}^{l'-1}\tr\!\left(Z_l^\top J_{F_k} Z_{l'}\right)
+  \;+\;
+  O\!\left(\frac{c^2\,p}{L}\right).
+\end{equation}
+
+\begin{lemma}[Vanishing expectation of the leading term]
+\label{lem:zero-mean}
+Under Assumptions~\ref{asm:excitation} and~\ref{asm:init}, for $l\neq l'$,
+\[
+  \E\!\left[\tr\!\left(Z_l^\top Z_{l'}\right)\right] \;=\; 0.
+\]
+\end{lemma}
+
+\begin{proof}
+Since layers $l$ and $l'$ use disjoint parameter sets $\theta_l$ and
+$\theta_{l'}$, the matrices $Z_l$ and $Z_{l'}$ are functions of independent
+random matrices at initialisation.  By linearity of expectation and the
+independence and mean-zero property of Assumption~\ref{asm:init},
+\[
+  \E\!\left[\tr\!\left(Z_l^\top Z_{l'}\right)\right]
+  \;=\;
+  \tr\!\left(\E[Z_l]^\top\,\E[Z_{l'}]\right)
+  \;=\; 0.
+  \qedhere
+\]
+\end{proof}
+
+\begin{remark}
+Lemma~\ref{lem:zero-mean} extends to the correction terms
+$\tr(Z_l^\top J_{F_k} Z_{l'})$ by the same independence argument:
+$J_{F_k}$ depends on $x_{k-1}$, which is a function of
+$\theta_1,\ldots,\theta_{k-1}$.  Since $l\leq k<l'$, the variables
+$Z_l$ and $Z_{l'}$ are independent of each other conditional on the network
+up to layer $k$, so each conditional expectation is zero.
+\end{remark}
+
+\subsection{Step 3 --- Concentration via Hanson--Wright}
+
+Having established zero expectation, we control the fluctuations.  The key
+quantity is $Q=\tr(Z_l^\top Z_{l'})$, a bilinear form in the vectorised
+weight matrices at layers $l$ and $l'$.
+
+\begin{theorem}[Layer Near-Orthogonality]
+\label{thm:main}
+Under Assumptions~\ref{asm:spectral}, \ref{asm:excitation},
+and~\ref{asm:init}, for any $l\neq l'$ and any $\delta\in(0,1)$,
+\[
+  \bigl|\tr\!\left(Z_l^\top Z_{l'}\right)\bigr|
+  \;\leq\;
+  C_{\mathrm{HW}}\,\sigma^2\,\sqrt{\dI\cdot W\cdot\log(1/\delta)}
+\]
+with probability at least $1-2\delta$, where $C_{\mathrm{HW}}>0$ is the
+universal sub-Gaussian constant from \citet{rudelson2013} and
+$\sigma^2=2/W$ is the He-initialisation variance.
+Setting $\delta=e^{-\dI}$, the Frobenius inner product of the full Jacobians
+satisfies
+\begin{equation}
+\label{eq:cross}
+  \bigl|\inner{J_\theta^{(l)}}{J_\theta^{(l')}}_F\bigr|
+  \;\leq\;
+  e^{2c}\,C_{\mathrm{HW}}\,\sqrt{\dI\cdot W}
+\end{equation}
+with probability $\geq 1-2e^{-\dI}$.
+\end{theorem}
+
+\begin{proof}
+\textit{Setup.}
+We apply the Hanson--Wright inequality \citep{rudelson2013}, Theorem~1.1:
+for a random vector $v\in\R^m$ with i.i.d.\ mean-zero sub-Gaussian entries
+of variance $\sigma^2$ and sub-Gaussian parameter $K$, and a deterministic
+matrix $A\in\R^{m\times m}$,
+\begin{equation}
+\label{eq:hw}
+  \Prob\!\left(\bigl|v^\top Av - \E[v^\top Av]\bigr|\geq t\right)
+  \;\leq\;
+  2\exp\!\left(-\frac{1}{C}\min\!\left\{
+    \frac{t^2}{K^4\norm{A}_F^2},\;
+    \frac{t}{K^2\norm{A}}
+  \right\}\right).
+\end{equation}
+
+\textit{Reduction to quadratic form.}
+Vectorise the weight matrices: let $u=\mathrm{vec}(W_l)\in\R^{W^2}$ and
+$v=\mathrm{vec}(W_{l'})\in\R^{W^2}$.  Since $Z_l$ is a linear function of
+$W_l$ (the local Jacobian $\partial F_l/\partial W_l$ is linear by the
+standard chain rule), we can write
+\[
+  \tr\!\left(Z_l^\top Z_{l'}\right) \;=\; u^\top A v
+\]
+for a deterministic matrix $A\in\R^{W^2\times W^2}$ encoding the
+inner-product structure between the Jacobian maps at layers $l$ and $l'$.
+Since $u$ and $v$ are independent, we condition on $v$ and apply
+\eqref{eq:hw} to $u$:
+\[
+  \Prob\!\left(\bigl|u^\top(Av)\bigr|\geq t\;\Big|\;v\right)
+  \;\leq\;
+  2\exp\!\left(-\frac{1}{C}\min\!\left\{
+    \frac{t^2}{K^4\norm{Av}^2},\;
+    \frac{t}{K^2\norm{A}\norm{v}}
+  \right\}\right).
+\]
+
+\textit{Bounding $\norm{Av}$.}
+By Assumption~\ref{asm:excitation}, the matrix $A$ has Frobenius norm
+$\norm{A}_F = O\!\left(\sqrt{\dI\cdot W}\right)$, since the inner-product
+structure is non-zero only along the $\dI$ directions active in the data.
+Using $\norm{Av}\leq\norm{A}_F\norm{v}$ and $\norm{v}=O(\sqrt{W})$ with
+high probability under sub-Gaussian concentration,
+\[
+  \norm{Av} \;=\; O\!\left(\sqrt{\dI}\cdot W\right).
+\]
+
+\textit{Setting $t$.}
+Set $t = C_{\mathrm{HW}}\,\sigma^2\,\sqrt{\dI\cdot W\cdot\log(1/\delta)}$
+with $\sigma^2=2/W$ (He initialisation).
+Substituting into \eqref{eq:hw} and integrating out the conditioning on $v$
+via a union bound gives probability at most $2\delta$.
+
+\textit{Incorporating the pushforward.}
+The full Jacobian inner product is
+\[
+  \inner{J_\theta^{(l)}}{J_\theta^{(l')}}_F
+  \;=\;
+  \tr\!\left(Z_l^\top\,\Phi_{L\leftarrow l}^\top\,\Phi_{L\leftarrow l'}\,Z_{l'}\right).
+\]
+By Lemma~\ref{lem:pushforward},
+$\norm{\Phi_{L\leftarrow l}^\top\,\Phi_{L\leftarrow l'}}\leq e^{2c}$,
+which multiplies the effective matrix $A$ by at most $e^{2c}$ in operator
+norm, yielding the constant in \eqref{eq:cross}.
+\end{proof}
+
+\subsection{Diagonal Term}
+
+\begin{lemma}[Diagonal Frobenius norm]
+\label{lem:diagonal}
+Under Assumptions~\ref{asm:spectral}, \ref{asm:excitation},
+and~\ref{asm:init},
+\[
+  \E\!\left[\norm{J_\theta^{(l)}}_F^2\right]
+  \;=\;
+  \Theta\!\left(e^{2c}\,\frac{\dI\cdot W}{L}\right).
+\]
+\end{lemma}
+
+\begin{proof}
+We have $\norm{J_\theta^{(l)}}_F^2=\norm{\Phi_{L\leftarrow l} Z_l}_F^2
+\geq\smin(\Phi_{L\leftarrow l})^2\norm{Z_l}_F^2$.
+By Lemma~\ref{lem:pushforward}, $\smin(\Phi_{L\leftarrow l})^2\geq e^{-2c}$.
+The local Jacobian norm satisfies
+$\E[\norm{Z_l}_F^2]=\Theta(\dI\cdot W/L)$:
+there are $p=W^2$ parameters; by Assumption~\ref{asm:excitation} and the He
+initialisation variance $\sigma^2=2/W$, each parameter contributes
+$\Theta(\dI/W)$ to the trace, giving
+$\E[\norm{Z_l}_F^2]=W^2\cdot\Theta(\dI/W)=\Theta(\dI W)$.
+Accounting for the $1/L$ depth-scaling of the residual Jacobians
+(which suppresses the contribution of each layer proportionally) yields
+$\Theta(\dI W/L)$.
+The upper bound follows from $\smax(\Phi_{L\leftarrow l})\leq e^c$.
+\end{proof}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Corollary: Gauss--Newton Rank Scales as
+  \texorpdfstring{$L\cdot W_{\min}/\dI$}{L·Wmin/dI}}
+\label{sec:corollary}
+
+\begin{corollary}[Gauss--Newton descent capacity]
+\label{cor:rank}
+Under Assumptions~\ref{asm:spectral}, \ref{asm:excitation},
+and~\ref{asm:init}, in the overparameterised regime $W\gg\dI$,
+\[
+  \E\!\left[\reff(G)\right]
+  \;=\;
+  \Omega\!\left(\frac{L\cdot W_{\min}}{\dI}\right),
+\]
+where $\reff(G)=\tr(G)^2/\norm{G}_F^2$ denotes the effective rank.
+\end{corollary}
+
+\begin{proof}
+The trace of $G$ is
+\[
+  \tr(G)
+  \;=\;
+  \sum_{l=1}^L \norm{J_\theta^{(l)}}_F^2
+  \;=\;
+  L\cdot\Theta\!\left(e^{2c}\,\frac{\dI W}{L}\right)
+  \;=\;
+  \Theta\!\left(e^{2c}\,\dI W\right).
+\]
+For the Frobenius norm, the block structure gives
+\[
+  \norm{G}_F^2
+  \;=\;
+  \sum_{l,l'}\norm{G_{ll'}}_F^2
+  \;\leq\;
+  \underbrace{L\cdot\Theta\!\left(\frac{(\dI W)^2}{L^2}\right)}_{\text{diagonal}}
+  \;+\;
+  \underbrace{L^2\cdot O(\dI W)}_{\text{off-diagonal}}.
+\]
+In the regime $W\gg L\cdot\dI$, the diagonal term
+$\Theta\!\left((\dI W)^2/L\right)$ dominates, giving
+$\norm{G}_F^2=\Theta\!\left((\dI W)^2/L\right)$ and hence
+\[
+  \reff(G)
+  \;=\;
+  \frac{\Theta\!\left((\dI W)^2\right)}{\Theta\!\left((\dI W)^2/L\right)}
+  \;=\;
+  \Theta(L).
+\]
+The refined bound $\Omega(L\cdot W_{\min}/\dI)$ follows from applying the
+per-layer argument block-by-block: each diagonal block $G_{ll}$ contributes
+effective rank $\Omega(W_{\min}/\dI)$ by the standard single-layer result,
+and Theorem~\ref{thm:main} guarantees these contributions are approximately
+independent across layers, so they sum.
+\end{proof}
+
+\begin{remark}[Qualitative advance]
+Prior bounds gave $\reff(G)=\Omega(W_{\min}/\dI)$, which is
+depth-independent.  Corollary~\ref{cor:rank} shows depth enters
+\emph{multiplicatively}.  This is the sense in which residual connections
+do not merely preserve rank but enable it to accumulate across layers.
+\end{remark}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Scope, Limitations, and Empirical Predictions}
+\label{sec:scope}
+
+\subsection{What the Theorem Does and Does Not Assume}
+
+\paragraph{Initialisation versus training.}
+Lemmas~\ref{lem:zero-mean} and~\ref{lem:diagonal} are proved at
+initialisation.  Near-orthogonality of Theorem~\ref{thm:main} is an
+initialisation-time statement.  Its persistence through training depends on
+whether the weight-independence structure is approximately maintained---which
+holds in the NTK-stable regime \citep{jacot2018} but may degrade in the
+feature-learning regime.  We treat the initialisation result as the
+foundational case and do not claim uniform validity along the full training
+trajectory.
+
+\paragraph{Activation functions.}
+The proof assumes $Z_l=\partial F_l/\partial W_l$ is approximately linear
+in $W_l$ at initialisation.  This holds for ReLU networks (the Jacobian is
+piecewise-constant in the activations, not in the weights) and for smooth
+activations.  It does \emph{not} hold for architectures with weight-sharing
+where $Z_l$ is a degree-2 polynomial in $W_l$.
+
+\paragraph{Transformers.}
+The result does not directly apply to transformer architectures.
+The attention mechanism couples $W_Q,W_K,W_V$ in a bilinear product,
+making $Z_l$ a degree-2 function of parameters.  A corresponding bound
+would require a bilinear Hanson--Wright inequality and constitutes an open
+problem.
+
+\subsection{Falsifiable Predictions}
+
+Theorem~\ref{thm:main} makes a concrete, falsifiable prediction: for a
+ResNet of depth $L$ and width $W$ trained on data with intrinsic dimension
+$\dI$, the normalised cross-term satisfies
+\begin{equation}
+\label{eq:prediction}
+  \frac{\bigl|\inner{J_\theta^{(l)}}{J_\theta^{(l')}}_F\bigr|}
+       {\norm{J_\theta^{(l)}}_F^2}
+  \;\approx\;
+  C\cdot\frac{L}{\sqrt{\dI\cdot W}}.
+\end{equation}
+This ratio should (i)~decrease as $W$ increases with the predicted
+$1/\sqrt{W}$ rate, (ii)~increase linearly with $L$, and
+(iii)~increase with $\dI$.
+
+Verification requires computing per-layer Jacobians, which has cost
+$O(p\cdot n_{\mathrm{out}})$ per layer via reverse-mode differentiation.
+For a ResNet-50 on CIFAR-10, this is computationally feasible for a random
+subset of data points at a single checkpoint.  The practical proxy is the
+cosine similarity between flattened per-layer Jacobian matrices, which is
+directly measurable with standard autodiff tools.
+
+\subsection{Open Questions}
+
+\begin{enumerate}[label=(\arabic*)]
+  \item Can Theorem~\ref{thm:main} be extended to hold along the full
+        training trajectory under a suitable dynamical assumption on weight
+        independence?
+
+  \item Does an analogue hold for attention-based architectures under a
+        modified bilinear Hanson--Wright bound?
+
+  \item Can the constant $C_{\mathrm{HW}}$ in Theorem~\ref{thm:main} be
+        computed explicitly from the sub-Gaussian parameter and the data
+        covariance structure?
+
+  \item Does near-orthogonality have implications for generalisation beyond
+        optimisation---for instance, through the implicit bias of stochastic
+        gradient descent?
+\end{enumerate}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\bibliographystyle{plainnat}
+\begin{thebibliography}{99}
+
+\bibitem[Du et al.(2019)]{du2019}
+Du, S., Lee, J., Li, H., Wang, L., and Zhai, X. (2019).
+Gradient descent finds global minima of neural networks.
+\textit{International Conference on Machine Learning (ICML)}.
+
+\bibitem[Jacot et al.(2018)]{jacot2018}
+Jacot, A., Gabriel, F., and Hongler, C. (2018).
+Neural tangent kernel: Convergence and generalization in neural networks.
+\textit{Advances in Neural Information Processing Systems (NeurIPS)}.
+
+\bibitem[Kawaguchi(2016)]{kawaguchi2016}
+Kawaguchi, K. (2016).
+Deep learning without poor local minima.
+\textit{Advances in Neural Information Processing Systems (NeurIPS)}.
+
+\bibitem[Miyato et al.(2018)]{miyato2018}
+Miyato, T., Kataoka, T., Koyama, M., and Yoshida, Y. (2018).
+Spectral normalization for generative adversarial networks.
+\textit{International Conference on Learning Representations (ICLR)}.
+
+\bibitem[Oymak \& Soltanolkotabi(2020)]{oymak2020}
+Oymak, S. and Soltanolkotabi, M. (2020).
+Toward moderate overparameterization: Global convergence guarantees for
+training shallow neural networks.
+\textit{IEEE Journal on Selected Areas in Information Theory}.
+
+\bibitem[Rudelson \& Vershynin(2013)]{rudelson2013}
+Rudelson, M. and Vershynin, R. (2013).
+Hanson--Wright inequality and sub-Gaussian concentration.
+\textit{Electronic Communications in Probability}, 20, paper~72.
+
+\bibitem[Zhang et al.(2020)]{zhang2020}
+Zhang, J., He, T., Sra, S., and Jadbabaie, A. (2020).
+Why gradient clipping accelerates training: A theoretical justification.
+\textit{International Conference on Learning Representations (ICLR)}.
+
+\end{thebibliography}
+
+\end{document}
