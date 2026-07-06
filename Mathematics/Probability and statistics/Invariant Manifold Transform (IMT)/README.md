@@ -19,7 +19,7 @@ The Invariant Manifold Transform (IMT) treats environmental shifts as continuous
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/IMT.git
+git clone https://github.com/boyyey/IMT.git
 cd IMT
 pip install -r requirements.txt
 ```
